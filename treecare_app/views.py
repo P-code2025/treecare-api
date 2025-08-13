@@ -7,7 +7,7 @@ import os
 from .models import Tree
 from .serializer import TreeSerializer
 
-# model = YOLO('sex_model.pt')
+model = YOLO('/Users/quanganh/Documents/django/treecarebe/treecare/best.pt')
 
 class UploadImageView(APIView):
     def post(self, request):
@@ -19,19 +19,90 @@ class UploadImageView(APIView):
         if not image.content_type.startswith('image/'):
             return Response({'error': 'File must be an image'}, status=status.HTTP_400_BAD_REQUEST)
         
-        fs = FileSystemStorage(location='media/')
-        filename = fs.save(image.name, image)
-        
         tree = Tree.objects.create(
             UploadImage=image,
-            Result="Pending analysis" 
+            Result="Analyzing..."
         )
+        
+        # Analyze immediately using YOLO classification model
+        prediction_text = "Analysis failed"
+        try:
+            file_path = tree.UploadImage.path
+            results = model(file_path)
+            
+            print(f"YOLO classification results: {results}")
+            
+            if results and len(results) > 0:
+                res = results[0]
+                print(f"Result type: {type(res)}")
+                print(f"Result attributes: {dir(res)}")
+                
+                # Handle classification results
+                if hasattr(res, 'probs') and res.probs is not None:
+                    print(f"Classification probabilities: {res.probs}")
+                    
+                    # Get top prediction with confidence
+                    if hasattr(res.probs, 'top1') and hasattr(res.probs, 'top1conf'):
+                        # Newer ultralytics version
+                        top_class = res.probs.top1
+                        top_conf = res.probs.top1conf
+                        prediction_text = f"Class {top_class} (Confidence: {top_conf:.2f})"
+                        
+                    elif hasattr(res.probs, 'cpu') and hasattr(res.probs, 'numpy'):
+                        # Convert to numpy and get top prediction
+                        probs_np = res.probs.cpu().numpy()
+                        top_idx = probs_np.argmax()
+                        top_conf = probs_np.max()
+                        
+                        # Get class name if available
+                        names_map = getattr(res, 'names', {}) or {}
+                        class_name = names_map.get(top_idx, f"Class {top_idx}")
+                        
+                        prediction_text = f"{class_name} (Confidence: {top_conf:.2f})"
+                        
+                    elif hasattr(res.probs, 'tolist'):
+                        # Convert to list and get top prediction
+                        probs_list = res.probs.tolist()
+                        top_idx = probs_list.index(max(probs_list))
+                        top_conf = max(probs_list)
+                        
+                        names_map = getattr(res, 'names', {}) or {}
+                        class_name = names_map.get(top_idx, f"Class {top_idx}")
+                        
+                        prediction_text = f"{class_name} (Confidence: {top_conf:.2f})"
+                        
+                    else:
+                        # Fallback
+                        prediction_text = f"Classification result: {res.probs}"
+                        
+                else:
+                    # Try to find probabilities in other attributes
+                    for attr in ['prob', 'predictions', 'output']:
+                        if hasattr(res, attr):
+                            value = getattr(res, attr)
+                            if value is not None:
+                                print(f"Found {attr}: {value}")
+                                prediction_text = f"Result from {attr}: {value}"
+                                break
+                    else:
+                        prediction_text = f"Classification result: {str(res)[:200]}..."
+                        
+        except Exception as e:
+            prediction_text = f"Analysis failed: {str(e)}"
+            print(f"YOLO classification error: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        # Persist result
+        tree.Result = prediction_text
+        tree.save()
         
         return Response({
             "status": "success",
-            "filename": filename,
-            "tree_id": tree.id,
-            "message": "Image uploaded successfully"
+            "filename": tree.UploadImage.name,
+            "result": tree.Result,
+            "image_url": tree.UploadImage.url,
+            "message": "Image uploaded and analyzed"
         }, status=status.HTTP_201_CREATED)
 
 class TreeResultView(APIView):
