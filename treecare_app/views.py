@@ -33,60 +33,22 @@ class UploadImageView(APIView):
             print(f"YOLO classification results: {results}")
             
             if results and len(results) > 0:
-                res = results[0]
-                print(f"Result type: {type(res)}")
-                print(f"Result attributes: {dir(res)}")
-                
-                # Handle classification results
-                if hasattr(res, 'probs') and res.probs is not None:
-                    print(f"Classification probabilities: {res.probs}")
-                    
-                    # Get top prediction with confidence
-                    if hasattr(res.probs, 'top1') and hasattr(res.probs, 'top1conf'):
-                        # Newer ultralytics version
-                        top_class = res.probs.top1
-                        top_conf = res.probs.top1conf
-                        prediction_text = f"Class {top_class} (Confidence: {top_conf:.2f})"
+                for r in results:
+                    probs = r.probs  # probabilities
+                    if probs is not None:
+                        top_class_id = probs.top1
+                        class_name = model.names[top_class_id]
+                        confidence = probs.top1conf.item()  # Use top1conf instead of probs[top_class_id].item()
                         
-                    elif hasattr(res.probs, 'cpu') and hasattr(res.probs, 'numpy'):
-                        # Convert to numpy and get top prediction
-                        probs_np = res.probs.cpu().numpy()
-                        top_idx = probs_np.argmax()
-                        top_conf = probs_np.max()
-                        
-                        # Get class name if available
-                        names_map = getattr(res, 'names', {}) or {}
-                        class_name = names_map.get(top_idx, f"Class {top_idx}")
-                        
-                        prediction_text = f"{class_name} (Confidence: {top_conf:.2f})"
-                        
-                    elif hasattr(res.probs, 'tolist'):
-                        # Convert to list and get top prediction
-                        probs_list = res.probs.tolist()
-                        top_idx = probs_list.index(max(probs_list))
-                        top_conf = max(probs_list)
-                        
-                        names_map = getattr(res, 'names', {}) or {}
-                        class_name = names_map.get(top_idx, f"Class {top_idx}")
-                        
-                        prediction_text = f"{class_name} (Confidence: {top_conf:.2f})"
-                        
+                        prediction_text = f"{class_name} (Confidence: {confidence:.3f})"
+                        print(f"Class: {class_name}, Confidence: {confidence}")
+                        break
                     else:
-                        # Fallback
-                        prediction_text = f"Classification result: {res.probs}"
-                        
+                        prediction_text = "No probabilities found"
+                        print("No probabilities attribute found")
                 else:
-                    # Try to find probabilities in other attributes
-                    for attr in ['prob', 'predictions', 'output']:
-                        if hasattr(res, attr):
-                            value = getattr(res, attr)
-                            if value is not None:
-                                print(f"Found {attr}: {value}")
-                                prediction_text = f"Result from {attr}: {value}"
-                                break
-                    else:
-                        prediction_text = f"Classification result: {str(res)[:200]}..."
-                        
+                    prediction_text = "No results to process"
+                    
         except Exception as e:
             prediction_text = f"Analysis failed: {str(e)}"
             print(f"YOLO classification error: {e}")
@@ -99,6 +61,7 @@ class UploadImageView(APIView):
         
         return Response({
             "status": "success",
+            "tree_id": tree.id,
             "filename": tree.UploadImage.name,
             "result": tree.Result,
             "image_url": tree.UploadImage.url,
@@ -115,6 +78,50 @@ class TreeResultView(APIView):
         
         if not tree.UploadImage:
             return Response({"error": "No image found for this tree"}, status=status.HTTP_404_NOT_FOUND)
+        
+        # If the stored result indicates a failure, re-analyze
+        if tree.Result.startswith("Analysis failed") or tree.Result == "Pending analysis":
+            try:
+                file_path = tree.UploadImage.path
+                results = model(file_path)
+                
+                print(f"Re-analyzing image for tree {tree_id}")
+                
+                if results and len(results) > 0:
+                    for r in results:
+                        probs = r.probs  # probabilities
+                        if probs is not None:
+                            top_class_id = probs.top1
+                            class_name = model.names[top_class_id]
+                            confidence = probs.top1conf.item()
+                            
+                            prediction_text = f"{class_name} (Confidence: {confidence:.3f})"
+                            print(f"Re-analysis - Class: {class_name}, Confidence: {confidence}")
+                            
+                            # Update the stored result
+                            tree.Result = prediction_text
+                            tree.save()
+                            break
+                        else:
+                            prediction_text = "No probabilities found"
+                            tree.Result = prediction_text
+                            tree.save()
+                    else:
+                        prediction_text = "No results to process"
+                        tree.Result = prediction_text
+                        tree.save()
+                else:
+                    prediction_text = "No results to process"
+                    tree.Result = prediction_text
+                    tree.save()
+                    
+            except Exception as e:
+                prediction_text = f"Re-analysis failed: {str(e)}"
+                tree.Result = prediction_text
+                tree.save()
+                print(f"Re-analysis error: {e}")
+                import traceback
+                traceback.print_exc()
         
         return Response({
             "status": "success",
