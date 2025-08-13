@@ -25,45 +25,73 @@ class UploadImageView(APIView):
         )
         
         # Analyze immediately using YOLO classification model
-        prediction_text = "Analysis failed"
+        species_result = "Unknown"
+        disease_result = "Unknown"
+        
         try:
             file_path = tree.UploadImage.path
             results = model(file_path)
             
-            print(f"YOLO classification results: {results}")
-            
             if results and len(results) > 0:
-                for r in results:
-                    probs = r.probs  # probabilities
-                    if probs is not None:
-                        top_class_id = probs.top1
-                        class_name = model.names[top_class_id]
-                        confidence = probs.top1conf.item()  # Use top1conf instead of probs[top_class_id].item()
-                        
-                        prediction_text = f"{class_name} (Confidence: {confidence:.3f})"
-                        print(f"Class: {class_name}, Confidence: {confidence}")
-                        break
+                # Get the first (and likely only) result
+                r = results[0]
+                probs = r.probs  # probabilities
+                
+                if probs is not None:
+                    # Get top prediction
+                    top_class_id = probs.top1
+                    class_name = model.names[top_class_id]
+                    confidence = probs.top1conf.item()
+                    
+                    # Split the class name by '__' to get species and disease
+                    if '__' in class_name:
+                        species, disease = class_name.split('__')
+                        # Replace underscores with spaces for better readability
+                        species = species.replace('_', ' ')
+                        disease = disease.replace('_', ' ')
+                        # Capitalize first letter of each word in disease
+                        disease = disease.title()
+                        species_result = species
+                        disease_result = disease
                     else:
-                        prediction_text = "No probabilities found"
-                        print("No probabilities attribute found")
+                        # Fallback if no '__' separator
+                        species_result = class_name
+                    
                 else:
-                    prediction_text = "No results to process"
+                    species_result = "No probabilities found"
+            else:
+                species_result = "No results to process"
                     
         except Exception as e:
-            prediction_text = f"Analysis failed: {str(e)}"
-            print(f"YOLO classification error: {e}")
+            species_result = f"Analysis failed: {str(e)}"
             import traceback
             traceback.print_exc()
         
-        # Persist result
-        tree.Result = prediction_text
+        # Update the tree with both species and disease results
+        # tree.Result = f"Species: {species_result} | Disease: {disease_result}"  # Remove this line
+        
+        # Safely update Species and Disease fields if they exist
+        try:
+            if hasattr(tree, 'Species'):
+                tree.Species = species_result
+                print(f"Saving Species: {species_result}")
+            if hasattr(tree, 'Disease'):
+                tree.Disease = disease_result
+                print(f"Saving Disease: {disease_result}")
+        except AttributeError:
+            # If fields don't exist, just save the Result
+            print("Species or Disease fields not found")
+            pass
+            
         tree.save()
+        print(f"After save - Species: {tree.Species}, Disease: {tree.Disease}")
         
         return Response({
             "status": "success",
             "tree_id": tree.id,
             "filename": tree.UploadImage.name,
-            "result": tree.Result,
+            "species": tree.Species if tree.Species else "Unknown",
+            "disease": tree.Disease if tree.Disease else "Unknown",
             "image_url": tree.UploadImage.url,
             "message": "Image uploaded and analyzed"
         }, status=status.HTTP_201_CREATED)
@@ -88,36 +116,53 @@ class TreeResultView(APIView):
                 print(f"Re-analyzing image for tree {tree_id}")
                 
                 if results and len(results) > 0:
-                    for r in results:
-                        probs = r.probs  # probabilities
-                        if probs is not None:
-                            top_class_id = probs.top1
-                            class_name = model.names[top_class_id]
-                            confidence = probs.top1conf.item()
-                            
-                            prediction_text = f"{class_name} (Confidence: {confidence:.3f})"
-                            print(f"Re-analysis - Class: {class_name}, Confidence: {confidence}")
-                            
-                            # Update the stored result
-                            tree.Result = prediction_text
-                            tree.save()
-                            break
+                    # Get the first (and likely only) result
+                    r = results[0]
+                    probs = r.probs  # probabilities
+                    
+                    if probs is not None:
+                        # Get top prediction
+                        top_class_id = probs.top1
+                        class_name = model.names[top_class_id]
+                        confidence = probs.top1conf.item()
+                        
+                        # Split the class name by '__' to get species and disease
+                        if '__' in class_name:
+                            species, disease = class_name.split('__')
+                            # Replace underscores with spaces for better readability
+                            species = species.replace('_', ' ')
+                            disease = disease.replace('_', ' ')
+                            # Capitalize first letter of each word in disease
+                            disease = disease.title()
+                            species_result = species
+                            disease_result = disease
                         else:
-                            prediction_text = "No probabilities found"
-                            tree.Result = prediction_text
-                            tree.save()
+                            # Fallback if no '__' separator
+                            species_result = class_name
+                            disease_result = "Unknown"
+                        
+                        print(f"Re-analysis - Species: {species_result}, Disease: {disease_result}")
+                        
+                        # Safely update Species and Disease fields if they exist
+                        try:
+                            if hasattr(tree, 'Species'):
+                                tree.Species = species_result
+                            if hasattr(tree, 'Disease'):
+                                tree.Disease = disease_result
+                        except AttributeError:
+                            # If fields don't exist, just save the Result
+                            pass
+                            
+                        tree.save()
                     else:
-                        prediction_text = "No results to process"
-                        tree.Result = prediction_text
+                        tree.Result = "No probabilities found"
                         tree.save()
                 else:
-                    prediction_text = "No results to process"
-                    tree.Result = prediction_text
+                    tree.Result = "No results to process"
                     tree.save()
                     
             except Exception as e:
-                prediction_text = f"Re-analysis failed: {str(e)}"
-                tree.Result = prediction_text
+                tree.Result = f"Re-analysis failed: {str(e)}"
                 tree.save()
                 print(f"Re-analysis error: {e}")
                 import traceback
@@ -125,7 +170,8 @@ class TreeResultView(APIView):
         
         return Response({
             "status": "success",
-            "result": tree.Result,
+            "species": tree.Species if tree.Species else "Unknown",
+            "disease": tree.Disease if tree.Disease else "Unknown",
             "image_url": tree.UploadImage.url,
             "tree_id": tree.id
         }, status=status.HTTP_200_OK)
