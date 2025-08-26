@@ -10,12 +10,10 @@ import traceback
 import os
 
 
-# Use relative path from BASE_DIR instead of hardcoded absolute path
 model_path = Path(settings.BASE_DIR) / 'best.pt'
 model = YOLO(str(model_path))
 
 def analyze_image(file_path):
-    """Run YOLO classification and return (species, disease) tuple."""
     try:
         results = model(file_path)
         if not results:
@@ -75,7 +73,7 @@ class UploadImageView(APIView):
                 "species": tree.Species,
                 "disease": tree.Disease,
                 "result": tree.Result,
-                "image_url": tree.UploadImage.url,
+                "image_url": request.build_absolute_uri(tree.UploadImage.url),
                 "message": "Image uploaded and analyzed"
             }, status=status.HTTP_201_CREATED)
             
@@ -111,5 +109,5 @@ class TreeResultView(APIView):
             "species": tree.Species,
             "disease": tree.Disease,
             "result": tree.Result,
-            "image_url": tree.UploadImage.url
+            "image_url": request.build_absolute_uri(tree.UploadImage.url)
         }, status=status.HTTP_200_OK)
