@@ -27,6 +27,9 @@ def analyze_image(file_path):
 
         top_class_id = probs.top1
         class_name = model.names[top_class_id]
+        confidence = probs.top1conf
+        if confidence < 0.4:
+            return "Can't identify", "Please try again with a clearer image"
 
         if '__' in class_name:
             species, disease = class_name.split('__')
@@ -51,12 +54,11 @@ class UploadImageView(APIView):
             if not image.content_type.startswith('image/'):
                 return Response({'error': 'File must be an image'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Create the tree record first
             tree = Tree.objects.create(
                 UploadImage=image,
                 Species="Unknown",
                 Disease="Unknown",
-                Result="Processing"  # Set initial result
+                Result="Processing"  
             )
 
             # Analyze the image
