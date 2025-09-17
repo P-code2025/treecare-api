@@ -1,7 +1,6 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from ultralytics import YOLO
 from django.conf import settings
 from pathlib import Path
 from .models import Tree
@@ -9,13 +8,22 @@ from .serializer import TreeSerializer
 import traceback
 import os
 
-
+# Đường dẫn tới model
 model_path = Path(settings.BASE_DIR) / 'best.pt'
-model = YOLO(str(model_path))
+model = None  # Chưa load ngay
+
+def get_model():
+    """Lazy load YOLO model khi cần"""
+    global model
+    if model is None:
+        from ultralytics import YOLO
+        model = YOLO(str(model_path))
+    return model
 
 def analyze_image(file_path):
     try:
-        results = model(file_path)
+        yolo_model = get_model()
+        results = yolo_model(file_path)
         if not results:
             return "Unknown", "Unknown"
 
@@ -26,7 +34,7 @@ def analyze_image(file_path):
             return "Unknown", "Unknown"
 
         top_class_id = probs.top1
-        class_name = model.names[top_class_id]
+        class_name = yolo_model.names[top_class_id]
         confidence = probs.top1conf
         if confidence < 0.4:
             return "Can't identify", "Please try again with a clearer image"
@@ -58,7 +66,7 @@ class UploadImageView(APIView):
                 UploadImage=image,
                 Species="Unknown",
                 Disease="Unknown",
-                Result="Processing"  
+                Result="Processing"
             )
 
             # Analyze the image
@@ -78,7 +86,7 @@ class UploadImageView(APIView):
                 "image_url": request.build_absolute_uri(tree.UploadImage.url),
                 "message": "Image uploaded and analyzed"
             }, status=status.HTTP_201_CREATED)
-            
+
         except Exception as e:
             return Response({
                 'error': f'Upload failed: {str(e)}'
