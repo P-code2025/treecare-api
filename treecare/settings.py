@@ -77,16 +77,18 @@ WSGI_APPLICATION = 'treecare.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
+# Cấu hình mặc định (SQLite) để chạy local nếu không có DATABASE_URL
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'treecare',
-        'USER': 'postgres',
-        'PASSWORD': '140405',
-        'HOST': 'localhost',  # Replace with your PostgreSQL server's address if necessary
-        'PORT': '5432',          # Leave empty to use the default PostgreSQL port (usually 5432)
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
+
+# Nếu có biến môi trường DATABASE_URL (Render sẽ set), thì dùng PostgreSQL
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if DATABASE_URL:
+    DATABASES['default'] = dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=True)
 
 
 # Password validation

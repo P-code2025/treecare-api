@@ -9,3 +9,4 @@ opencv-python==4.8.1.78
 gunicorn
 psycopg2-binary==2.9.9
 ultralytics-thop==2.0.17
+dj-database-url==2.1.0
