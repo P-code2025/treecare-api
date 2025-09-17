@@ -19,12 +19,17 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse
+from treecare_app.models import Tree
+from treecare_app.serializer import TreeSerializer
 
 def home(request):
-    return JsonResponse({"status": "ok", "message": "TreeCare API is running"})
+    # Lấy toàn bộ bản ghi Tree từ DB
+    trees = Tree.objects.all()
+    serializer = TreeSerializer(trees, many=True)
+    return JsonResponse(serializer.data, safe=False)
 
 urlpatterns = [
-    path('', home),  # Truy cập gốc sẽ trả JSON
+    path('', home),  # Truy cập gốc sẽ trả về danh sách cây
     path('admin/', admin.site.urls),
     path('tree/', include('treecare_app.urls')),
 ]
