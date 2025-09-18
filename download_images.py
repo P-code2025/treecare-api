@@ -2,8 +2,14 @@ import os
 import shutil
 import requests
 from zipfile import ZipFile
+import django
 
-# Thay FILE_ID bằng ID thật của file trên Google Drive
+# Khởi tạo Django ORM
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'treecare.settings')
+django.setup()
+
+from treecare_app.models import Tree
+
 FILE_ID = "1N_BK2z7pIOFFG08nz4EBLU0ugd3BYLg4"
 ZIP_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
 
@@ -26,22 +32,32 @@ def download_and_extract(url):
     os.remove(zip_path)
 
     # 3. Tạo thư mục đích
-    os.makedirs("media/tree_images", exist_ok=True)
-    os.makedirs("tree_images", exist_ok=True)
+    dest_dir = os.path.join("media", "tree_images")
+    os.makedirs(dest_dir, exist_ok=True)
 
-    # 4. Phân loại ảnh
+    # 4. Xóa dữ liệu cũ trong DB (nếu muốn làm mới mỗi lần deploy)
+    Tree.objects.all().delete()
+
+    # 5. Move ảnh và insert DB
+    count = 0
     for file in os.listdir(tmp_dir):
         src = os.path.join(tmp_dir, file)
         if os.path.isfile(src):
-            # Ví dụ: nếu tên file chứa 'fruit' thì cho vào tree_images, còn lại vào media/tree_images
-            if "fruit" in file.lower():
-                shutil.move(src, os.path.join("tree_images", file))
-            else:
-                shutil.move(src, os.path.join("media/tree_images", file))
+            dest_path = os.path.join(dest_dir, file)
+            shutil.move(src, dest_path)
 
-    # 5. Xóa thư mục tạm
+            # Insert bản ghi DB
+            Tree.objects.create(
+                UploadImage=f"tree_images/{file}",  # đường dẫn tương đối
+                Result=file,
+                Species="Unknown",
+                Disease="Unknown"
+            )
+            count += 1
+
+    # 6. Xóa thư mục tạm
     shutil.rmtree(tmp_dir)
-    print("✅ Hoàn tất phân loại ảnh!")
+    print(f"✅ Hoàn tất: {count} ảnh đã được lưu vào media/tree_images và insert vào DB!")
 
 if __name__ == "__main__":
     download_and_extract(ZIP_URL)
