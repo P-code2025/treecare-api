@@ -16,9 +16,19 @@ def get_model():
     """Lazy load YOLO model khi cần"""
     global model
     if model is None:
-        from ultralytics import YOLO
-        model = YOLO(str(model_path))
+        try:
+            from ultralytics import YOLO
+            print("✅ Ultralytics imported successfully")
+            model = YOLO(str(model_path))
+            print(f"✅ Model loaded from {model_path}")
+        except ImportError as e:
+            print("❌ ImportError:", e)
+            raise
+        except Exception as e:
+            print("❌ Error loading model:", e)
+            raise
     return model
+
 
 def analyze_image(file_path):
     try:
