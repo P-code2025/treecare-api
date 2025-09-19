@@ -8,32 +8,34 @@ from .serializer import TreeSerializer
 import traceback
 import os
 
-# Đường dẫn tới model
-model_path = Path(settings.BASE_DIR) / 'best.pt'
-model = None  # Chưa load ngay
+# =========================
+# PRELOAD YOLO MODEL
+# =========================
+from ultralytics import YOLO
+
+# Đường dẫn tới model (nên dùng model nhẹ như yolov8n.pt để tránh OOM)
+MODEL_PATH = Path(settings.BASE_DIR) / 'best.pt'
+
+try:
+    print("🔄 Loading YOLO model at server start...")
+    yolo_model = YOLO(str(MODEL_PATH))
+    print(f"✅ Model loaded from {MODEL_PATH}")
+except Exception as e:
+    print("❌ Error loading YOLO model:", e)
+    yolo_model = None
+
 
 def get_model():
-    """Lazy load YOLO model khi cần"""
-    global model
-    if model is None:
-        try:
-            from ultralytics import YOLO
-            print("✅ Ultralytics imported successfully")
-            model = YOLO(str(model_path))
-            print(f"✅ Model loaded from {model_path}")
-        except ImportError as e:
-            print("❌ ImportError:", e)
-            raise
-        except Exception as e:
-            print("❌ Error loading model:", e)
-            raise
-    return model
+    """Trả về model YOLO đã preload"""
+    if yolo_model is None:
+        raise RuntimeError("YOLO model not loaded")
+    return yolo_model
 
 
 def analyze_image(file_path):
     try:
-        yolo_model = get_model()
-        results = yolo_model(file_path)
+        model = get_model()
+        results = model(file_path)
         if not results:
             return "Unknown", "Unknown"
 
@@ -44,7 +46,7 @@ def analyze_image(file_path):
             return "Unknown", "Unknown"
 
         top_class_id = probs.top1
-        class_name = yolo_model.names[top_class_id]
+        class_name = model.names[top_class_id]
         confidence = probs.top1conf
         if confidence < 0.4:
             return "Can't identify", "Please try again with a clearer image"
