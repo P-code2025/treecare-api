@@ -8,3 +8,16 @@ media/
 tree_images/
 .DS_Store
 Thumbs.db
+
+# Dataset & ảnh
+*.jpg
+*.jpeg
+*.png
+*.zip
+
+# Model nặng không dùng
+yolo11n-cls.pt
+yolo11l-cls.pt
+
+# Thư mục output train của YOLO
+runs/
