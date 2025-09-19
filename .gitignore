@@ -21,3 +21,5 @@ yolo11l-cls.pt
 
 # Thư mục output train của YOLO
 runs/
+convert_to_nano.py
+!best_nano.pt
