@@ -8,7 +8,6 @@ from .serializer import TreeSerializer
 import traceback
 import os
 from PIL import Image
-import io
 
 # =========================
 # Giới hạn thread để giảm RAM/CPU
@@ -22,52 +21,19 @@ except ImportError:
     pass
 
 # =========================
-# PRELOAD YOLO MODEL
+# Import hàm predict từ ONNX
 # =========================
-from ultralytics import YOLO
-
-MODEL_PATH = Path(settings.BASE_DIR) / 'best_nano.pt' 
-
-try:
-    print("🔄 Loading YOLO model at server start...")
-    yolo_model = YOLO(str(MODEL_PATH))
-    print(f"✅ Model loaded from {MODEL_PATH}")
-except Exception as e:
-    print("❌ Error loading YOLO model:", e)
-    yolo_model = None
-
-
-def get_model():
-    if yolo_model is None:
-        raise RuntimeError("YOLO model not loaded")
-    return yolo_model
+from .convert_to_nano import predict
 
 
 def analyze_image(file_path):
     try:
-        # Resize ảnh trước khi predict
         with Image.open(file_path) as im:
             im = im.convert("RGB")
-            im.thumbnail((320, 320))  # ép kích thước tối đa 320px
-            buf = io.BytesIO()
-            im.save(buf, format="JPEG", quality=90)
-            buf.seek(0)
 
-        model = get_model()
-        results = model(buf, imgsz=320, conf=0.25, device='cpu', half=False, verbose=False)
+        class_name, score = predict(im)  # gọi ONNX predict
 
-        if not results:
-            return "Unknown", "Unknown"
-
-        r = results[0]
-        probs = r.probs
-        if probs is None:
-            return "Unknown", "Unknown"
-
-        top_class_id = probs.top1
-        class_name = model.names[top_class_id]
-        confidence = probs.top1conf
-        if confidence < 0.4:
+        if score < 0.4:
             return "Can't identify", "Please try again with a clearer image"
 
         if '__' in class_name:
@@ -100,7 +66,7 @@ class UploadImageView(APIView):
                 Result="Processing"
             )
 
-            # Analyze the image ngay sau khi upload
+            # Phân tích ảnh ngay sau khi upload
             species, disease = analyze_image(tree.UploadImage.path)
             tree.Species = species
             tree.Disease = disease
@@ -131,7 +97,6 @@ class TreeResultView(APIView):
         except Tree.DoesNotExist:
             return Response({"error": "Tree not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # ❌ Bỏ re-analyze để GET không chạy YOLO nữa
         return Response({
             "status": "success",
             "tree_id": tree.id,
