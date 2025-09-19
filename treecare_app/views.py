@@ -23,7 +23,7 @@ except ImportError:
 # =========================
 # Import hàm predict từ ONNX
 # =========================
-from .convert_to_nano import predict
+from convert_to_nano import predict
 
 
 def analyze_image(file_path):
